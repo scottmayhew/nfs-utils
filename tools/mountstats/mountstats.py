@@ -562,13 +562,28 @@ def print_mountstats_help(name):
     print('  --rpc        display only the RPC statistics')
     print('  --start      sample and save statistics')
     print('  --end        resample statistics and compare them with saved')
+    print('  --since <file> shows difference between current stats and those in \'file\'')
     print()
+
+def print_mountstats(stats, nfs_only, rpc_only):
+    if nfs_only:
+       stats.display_nfs_options()
+       stats.display_nfs_events()
+       stats.display_nfs_bytes()
+    elif rpc_only:
+       stats.display_rpc_generic_stats()
+       stats.display_rpc_op_stats()
+    else:
+       stats.display_nfs_options()
+       stats.display_nfs_bytes()
+       stats.display_rpc_generic_stats()
+       stats.display_rpc_op_stats()
 
 def mountstats_command():
     """Mountstats command
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "ef:hnrsv", ["end", "file=", "help", "nfs", "rpc", "start", "version"])
+        opts, args = getopt.getopt(sys.argv[1:], "ef:hnrsvS:", ["end", "file=", "help", "nfs", "rpc", "start", "version", "since="])
     except getopt.GetoptError as err:
         print_mountstats_help(prog)
 
@@ -576,6 +591,7 @@ def mountstats_command():
     nfs_only = False
     rpc_only = False
     infile = None
+    since = None
 
     for o, a in opts:
         if o in ("-e", "--end"):
@@ -594,6 +610,8 @@ def mountstats_command():
         elif o in ("-v", "--version"):
             print('%s version %s' % (sys.argv[0], Mountstats_version))
             sys.exit(0)
+        elif o in ("-S", "--since"):
+            since = a
         else:
             assert False, "unhandled option"
     mountpoints += args
@@ -610,6 +628,9 @@ def mountstats_command():
         infile = '/proc/self/mountstats'
     mountstats = parse_stats_file(infile)
 
+    if since:
+        old_mountstats = parse_stats_file(since)
+
     for mp in mountpoints:
         if mp not in mountstats:
             print('Statistics for mount point %s not found' % mp)
@@ -622,18 +643,15 @@ def mountstats_command():
             print('Mount point %s exists but is not an NFS mount' % mp)
             continue
 
-        if nfs_only:
-           stats.display_nfs_options()
-           stats.display_nfs_events()
-           stats.display_nfs_bytes()
-        elif rpc_only:
-           stats.display_rpc_generic_stats()
-           stats.display_rpc_op_stats()
+        if not since:
+            print_mountstats(stats, nfs_only, rpc_only)
+        elif since and mp not in old_mountstats:
+            print_mountstats(stats, nfs_only, rpc_only)
         else:
-           stats.display_nfs_options()
-           stats.display_nfs_bytes()
-           stats.display_rpc_generic_stats()
-           stats.display_rpc_op_stats()
+            old_stats = DeviceData()
+            old_stats.parse_stats(old_mountstats[mp])
+            diff_stats = stats.compare_iostats(old_stats)
+            print_mountstats(diff_stats, nfs_only, rpc_only)
 
 def print_nfsstat_help(name):
     print('usage: %s [ options ]' % name)
@@ -684,7 +702,7 @@ def iostat_command():
     """iostat-like command for NFS mount points
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "f:hv", ["file=", "help", "version"])
+        opts, args = getopt.getopt(sys.argv[1:], "f:hvS:", ["file=", "help", "version", "since="])
     except getopt.GetoptError as err:
         print_iostat_help(prog)
     devices = []
@@ -692,6 +710,7 @@ def iostat_command():
     count_seen = False
     infile_seen = False
     infile = None
+    since = None
 
     for o, a in opts:
         if o in ("-f", "--file"):
@@ -703,6 +722,8 @@ def iostat_command():
         elif o in ("-v", "--version"):
             print('%s version %s' % (sys.argv[0], Mountstats_version))
             sys.exit(0)
+        elif o in ("-S", "--since"):
+            since = a
         else:
             assert False, "unhandled option"
     if not infile:
@@ -715,8 +736,8 @@ def iostat_command():
         elif not interval_seen:
             interval = int(arg)
             if interval > 0:
-                if infile_seen:
-                    print('interval may not be used with the -f option')
+                if infile_seen or since:
+                    print('interval may not be used with the -f or -S options')
                     return
                 else:
                     interval_seen = True
@@ -726,14 +747,19 @@ def iostat_command():
         elif not count_seen:
             count = int(arg)
             if count > 0:
-                if infile_seen:
-                    print('count may not be used with the -f option')
+                if infile_seen or since:
+                    print('count may not be used with the -f or -S options')
                     return
                 else:
                     count_seen = True
             else:
                 print('Illegal <count> value')
                 return
+
+    if since:
+        old_mountstats = parse_stats_file(since)
+    else:
+        old_mountstats = None
 
     # make certain devices contains only NFS mount points
     if len(devices) > 0:
@@ -754,7 +780,6 @@ def iostat_command():
         print('No NFS mount points were found')
         return
 
-    old_mountstats = None
     sample_time = 0
 
     if not interval_seen:
