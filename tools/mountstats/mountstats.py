@@ -557,6 +557,7 @@ def print_mountstats_help(name):
     print(' Display NFS client per-mount statistics.')
     print()
     print('  --version    display the version of this command')
+    print('  --file <file> read stats from \'file\' instead of /proc/self/mountstats')
     print('  --nfs        display only the NFS statistics')
     print('  --rpc        display only the RPC statistics')
     print('  --start      sample and save statistics')
@@ -567,17 +568,20 @@ def mountstats_command():
     """Mountstats command
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "ehnrsv", ["end", "help", "nfs", "rpc", "start", "version"])
+        opts, args = getopt.getopt(sys.argv[1:], "ef:hnrsv", ["end", "file=", "help", "nfs", "rpc", "start", "version"])
     except getopt.GetoptError as err:
         print_mountstats_help(prog)
 
     mountpoints = []
     nfs_only = False
     rpc_only = False
+    infile = None
 
     for o, a in opts:
         if o in ("-e", "--end"):
             raise Exception('Sampling is not yet implemented')
+        elif o in ("-f", "--file"):
+            infile = a
         elif o in ("-h", "--help"):
             print_mountstats_help(prog)
             sys.exit(0)
@@ -602,7 +606,9 @@ def mountstats_command():
         print_mountstats_help(prog)
         return
 
-    mountstats = parse_stats_file('/proc/self/mountstats')
+    if not infile:
+        infile = '/proc/self/mountstats'
+    mountstats = parse_stats_file(infile)
 
     for mp in mountpoints:
         if mp not in mountstats:
@@ -678,16 +684,20 @@ def iostat_command():
     """iostat-like command for NFS mount points
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hv", ["help", "version"])
+        opts, args = getopt.getopt(sys.argv[1:], "f:hv", ["file=", "help", "version"])
     except getopt.GetoptError as err:
         print_iostat_help(prog)
-    mountstats = parse_stats_file('/proc/self/mountstats')
     devices = []
     interval_seen = False
     count_seen = False
+    infile_seen = False
+    infile = None
 
     for o, a in opts:
-        if o in ("-h", "--help"):
+        if o in ("-f", "--file"):
+            infile = a
+            infile_seen = True
+        elif o in ("-h", "--help"):
             print_iostat_help(prog)
             sys.exit(0)
         elif o in ("-v", "--version"):
@@ -695,6 +705,9 @@ def iostat_command():
             sys.exit(0)
         else:
             assert False, "unhandled option"
+    if not infile:
+        infile = '/proc/self/mountstats'
+    mountstats = parse_stats_file(infile)
 
     for arg in args:
         if arg in mountstats:
@@ -702,14 +715,22 @@ def iostat_command():
         elif not interval_seen:
             interval = int(arg)
             if interval > 0:
-                interval_seen = True
+                if infile_seen:
+                    print('interval may not be used with the -f option')
+                    return
+                else:
+                    interval_seen = True
             else:
                 print('Illegal <interval> value')
                 return
         elif not count_seen:
             count = int(arg)
             if count > 0:
-                count_seen = True
+                if infile_seen:
+                    print('count may not be used with the -f option')
+                    return
+                else:
+                    count_seen = True
             else:
                 print('Illegal <count> value')
                 return
