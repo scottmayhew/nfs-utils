@@ -24,6 +24,7 @@ MA 02110-1301 USA
 """
 
 import sys, os, time
+import getopt
 
 Mountstats_version = '0.2'
 
@@ -547,37 +548,33 @@ def print_mountstats_help(name):
 def mountstats_command():
     """Mountstats command
     """
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "ehnrsv", ["end", "help", "nfs", "rpc", "start", "version"])
+    except getopt.GetoptError as err:
+        print_mountstats_help(prog)
+
     mountpoints = []
     nfs_only = False
     rpc_only = False
 
-    for arg in sys.argv:
-        if arg in ['-h', '--help', 'help', 'usage']:
+    for o, a in opts:
+        if o in ("-e", "--end"):
+            raise Exception('Sampling is not yet implemented')
+        elif o in ("-h", "--help"):
             print_mountstats_help(prog)
-            return
-
-        if arg in ['-v', '--version', 'version']:
+            sys.exit(0)
+        elif o in ("-n", "--nfs"):
+            nfs_only = True
+        elif o in ("-r", "--rpc"):
+            rpc_only = True
+        elif o in ("-s", "--start"):
+            raise Exception('Sampling is not yet implemented')
+        elif o in ("-v", "--version"):
             print('%s version %s' % (sys.argv[0], Mountstats_version))
             sys.exit(0)
-
-        if arg in ['-n', '--nfs']:
-            nfs_only = True
-            continue
-
-        if arg in ['-r', '--rpc']:
-            rpc_only = True
-            continue
-
-        if arg in ['-s', '--start']:
-            raise Exception('Sampling is not yet implemented')
-
-        if arg in ['-e', '--end']:
-            raise Exception('Sampling is not yet implemented')
-
-        if arg == sys.argv[0]:
-            continue
-
-        mountpoints += [arg]
+        else:
+            assert False, "unhandled option"
+    mountpoints += args
 
     if mountpoints == []:
         print_mountstats_help(prog)
@@ -662,23 +659,26 @@ def print_iostat_summary(old, new, devices, time):
 def iostat_command():
     """iostat-like command for NFS mount points
     """
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hv", ["help", "version"])
+    except getopt.GetoptError as err:
+        print_iostat_help(prog)
     mountstats = parse_stats_file('/proc/self/mountstats')
     devices = []
     interval_seen = False
     count_seen = False
 
-    for arg in sys.argv:
-        if arg in ['-h', '--help', 'help', 'usage']:
+    for o, a in opts:
+        if o in ("-h", "--help"):
             print_iostat_help(prog)
-            return
-
-        if arg in ['-v', '--version', 'version']:
+            sys.exit(0)
+        elif o in ("-v", "--version"):
             print('%s version %s' % (sys.argv[0], Mountstats_version))
-            return
+            sys.exit(0)
+        else:
+            assert False, "unhandled option"
 
-        if arg == sys.argv[0]:
-            continue
-
+    for arg in args:
         if arg in mountstats:
             devices += [arg]
         elif not interval_seen:
