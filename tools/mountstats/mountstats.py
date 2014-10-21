@@ -616,10 +616,6 @@ def mountstats_command():
             assert False, "unhandled option"
     mountpoints += args
 
-    if mountpoints == []:
-        print_mountstats_help(prog)
-        return
-
     if rpc_only == True and nfs_only == True:
         print_mountstats_help(prog)
         return
@@ -628,21 +624,31 @@ def mountstats_command():
         infile = '/proc/self/mountstats'
     mountstats = parse_stats_file(infile)
 
+    # make certain devices contains only NFS mount points
+    if len(mountpoints) > 0:
+        check = []
+        for device in mountpoints:
+            stats = DeviceData()
+            stats.parse_stats(mountstats[device])
+            if stats.is_nfs_mountpoint():
+                check += [device]
+        mountpoints = check
+    else:
+        for device, descr in mountstats.items():
+            stats = DeviceData()
+            stats.parse_stats(descr)
+            if stats.is_nfs_mountpoint():
+                mountpoints += [device]
+    if len(mountpoints) == 0:
+        print('No NFS mount points were found')
+        return
+
     if since:
         old_mountstats = parse_stats_file(since)
 
     for mp in mountpoints:
-        if mp not in mountstats:
-            print('Statistics for mount point %s not found' % mp)
-            continue
-
         stats = DeviceData()
         stats.parse_stats(mountstats[mp])
-
-        if not stats.is_nfs_mountpoint():
-            print('Mount point %s exists but is not an NFS mount' % mp)
-            continue
-
         if not since:
             print_mountstats(stats, nfs_only, rpc_only)
         elif since and mp not in old_mountstats:
