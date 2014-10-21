@@ -445,6 +445,42 @@ class DeviceData:
                 print('\ttotal execute time: %f (milliseconds)' % \
                     (float(stats[7]) / count))
 
+    def display_nfsstat_stats(self):
+        """Pretty-print nfsstat-style stats
+        """
+        sends = 0
+        trans = 0
+        for op in self.__rpc_data['ops']:
+            sends += self.__rpc_data[op][0]
+            trans += self.__rpc_data[op][1]
+        retrans = trans - sends
+        print('Client rpc stats:')
+        print('calls      retrans    authrefrsh')
+        # authrefresh stats don't actually get captured in
+        # /proc/self/mountstats, so we fudge it here
+        print('%-11u%-11u%-11u' % (sends, retrans, sends))
+        if not sends:
+            return
+        print()
+        prog, vers = self.__rpc_data['programversion'].split('/')
+        print('Client nfs v%d' % int(vers))
+        info = []
+        for op in self.__rpc_data['ops']:
+            print('%-13s' % str.lower(op), end='')
+            count = self.__rpc_data[op][0]
+            pct = (count * 100) / sends
+            info.append((count, pct))
+            if (self.__rpc_data['ops'].index(op) + 1) % 6 == 0:
+                print()
+                for (count, pct) in info:
+                    print('%-8u%3u%% ' % (count, pct), end='')
+                print()
+                info = []
+        print()
+        for (count, pct) in info:
+            print('%-8u%3u%% ' % (count, pct), end='')
+        print()
+
     def compare_iostats(self, old_stats):
         """Return the difference between two sets of stats
         """
@@ -706,9 +742,58 @@ def print_nfsstat_help(name):
     print()
     print(' nfsstat-like program that uses NFS client per-mount statistics.')
     print()
+    print('Options:')
+    print()
+    print('  -m <mountpoint>, --mountpount <mountpoint>')
+    print('                Show stats for \'mountpoint\'')
+    print()
+    print('  -f <file>, --file <file>')
+    print('                Read stats from \'file\' instead of /proc/self/mountstats')
+    print()
+    print('  -S <file>, --since <file>')
+    print('                Shows difference between current stats and those in \'file\'')
+    print()
+    print('  -h, --help')
+    print('                What you just did')
 
 def nfsstat_command():
-    print_nfsstat_help(prog)
+    """nfsstat-like command for NFS mount points
+    """
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "f:hm:S:", ["file=", "help", "mountpoint=", "since="])
+    except getopt.GetoptError as err:
+        print_nfsstat_help(prog)
+    infile = None
+    mp = None
+    since = None
+    for o, a in opts:
+        if o in ("-f", "--file"):
+            infile = a
+        elif o in ("-h", "--help"):
+            print_nfsstat_help(prog)
+            sys.exit()
+        elif o in ("-m", "--mountpoint"):
+            mp = a
+        elif o in ("-S", "--since"):
+            since = a
+        else:
+            assert False, "unhandled option"
+    if not mp:
+        print_nfsstat_help(prog)
+        sys.exit()
+    if not infile:
+        infile = '/proc/self/mountstats'
+    mountstats = parse_stats_file(infile)
+    stats = DeviceData()
+    stats.parse_stats(mountstats[mp])
+    if not since:
+        stats.display_nfsstat_stats()
+    else:
+        old_mountstats = parse_stats_file(since)
+        oldstats = DeviceData()
+        oldstats.parse_stats(old_mountstats[mp])
+        diff_stats = stats.compare_iostats(oldstats)
+        diff_stats.display_nfsstat_stats()
 
 def print_iostat_help(name):
     print('usage: %s [ <interval> [ <count> ] ] [ <mount point> ] ' % name)
