@@ -631,8 +631,6 @@ def print_mountstats_help(name):
     print('  --file <file> read stats from \'file\' instead of /proc/self/mountstats')
     print('  --nfs        display only the NFS statistics')
     print('  --rpc        display only the RPC statistics')
-    print('  --start      sample and save statistics')
-    print('  --end        resample statistics and compare them with saved')
     print('  --since <file> shows difference between current stats and those in \'file\'')
     print()
 
@@ -656,7 +654,7 @@ def mountstats_command():
     """Mountstats command
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "ef:hnrsvS:R", ["end", "file=", "help", "nfs", "rpc", "start", "version", "since=", "raw"])
+        opts, args = getopt.getopt(sys.argv[1:], "f:hnrvS:R", ["file=", "help", "nfs", "rpc", "version", "since=", "raw"])
     except getopt.GetoptError as err:
         print_mountstats_help(prog)
 
@@ -668,9 +666,7 @@ def mountstats_command():
     since = None
 
     for o, a in opts:
-        if o in ("-e", "--end"):
-            raise Exception('Sampling is not yet implemented')
-        elif o in ("-f", "--file"):
+        if o in ("-f", "--file"):
             infile = a
         elif o in ("-h", "--help"):
             print_mountstats_help(prog)
@@ -679,8 +675,6 @@ def mountstats_command():
             nfs_only = True
         elif o in ("-r", "--rpc"):
             rpc_only = True
-        elif o in ("-s", "--start"):
-            raise Exception('Sampling is not yet implemented')
         elif o in ("-v", "--version"):
             print('%s version %s' % (sys.argv[0], Mountstats_version))
             sys.exit(0)
