@@ -35,7 +35,18 @@ typedef enum {
 	PO_BAD_VALUE = 2,
 } po_found_t;
 
-struct mount_options;
+struct mount_option {
+	struct mount_option *next, *prev;
+	char *keyword;
+	char *value;
+};
+
+struct mount_options {
+	struct mount_option *head, *tail;
+	unsigned int count;
+};
+
+//struct mount_options;
 
 struct mount_options *	po_split(char *);
 struct mount_options *	po_dup(struct mount_options *);

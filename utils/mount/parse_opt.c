@@ -51,17 +51,6 @@
 #include "token.h"
 
 
-struct mount_option {
-	struct mount_option *next, *prev;
-	char *keyword;
-	char *value;
-};
-
-struct mount_options {
-	struct mount_option *head, *tail;
-	unsigned int count;
-};
-
 static struct mount_option *option_create(char *str)
 {
 	struct mount_option *option;

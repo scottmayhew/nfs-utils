@@ -34,6 +34,8 @@
 #include <sys/mount.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <linux/mount.h>
+#include <linux/unistd.h>
 
 #include "nfslib.h"
 #include "sockaddr.h"
@@ -50,6 +52,7 @@
 #include "parse_dev.h"
 #include "conffile.h"
 #include "misc.h"
+#include "fscontext.h"
 
 #ifndef NFS_PROGRAM
 #define NFS_PROGRAM	(100003)
@@ -655,6 +658,70 @@ static int nfs_sys_mount(struct nfsmount_info *mi, struct mount_options *opts)
 	return !result;
 }
 
+#if 0
+static int nfs_fscontext_remount(struct nfsmount_info *mi, struct mount_options *opts)
+{
+	int fsfd;
+	struct mount_option *option;
+
+	fsfd = fspick(AT_FDCWD, mi->node, FSPICK_NO_AUTOMOUNT | FSPICK_CLOEXEC);
+	if (fsfd == -1) {
+		int save = errno;
+		nfs_error(_("%s: fspick(2): %s"), progname, strerror(save));
+		errno = save;
+		return 0;
+	}
+	for (option = opts->head; option; option = option->next) {
+		if (option->value)
+			E_fsconfig(fsfd, FSCONFIG_SET_STRING,
+				   option->keyword, option->value, 0);
+		else
+			E_fsconfig(fsfd, FSCONFIG_SET_FLAG,
+				   option->keyword, NULL, 0);
+	}
+	E_fsconfig(fsfd, FSCONFIG_CMD_RECONFIGURE, NULL, NULL, 0);
+	return 1;
+}
+#endif
+
+static int nfs_fscontext_mount(struct nfsmount_info *mi, struct mount_options *opts)
+{
+	int fsfd, mfd;
+	struct mount_option *option;
+
+	if (mi->fake)
+		return 1;
+
+	fsfd = fsopen("nfs", 0);
+	if (fsfd == -1) {
+		int save = errno;
+		nfs_error(_("%s: fsopen(2): %s"), progname, strerror(save));
+		errno = save;
+		return 0;
+	}
+
+	E_fsconfig(fsfd, FSCONFIG_SET_STRING, "source", mi->spec, 0);
+	for (option = opts->head; option; option = option->next) {
+		if (option->value)
+			E_fsconfig(fsfd, FSCONFIG_SET_STRING,
+				   option->keyword, option->value, 0);
+		else
+			E_fsconfig(fsfd, FSCONFIG_SET_FLAG,
+				   option->keyword, NULL, 0);
+	}
+	E_fsconfig(fsfd, FSCONFIG_CMD_CREATE, NULL, NULL, 0);
+
+	mfd = fsmount(fsfd, 0, mi->flags & ~(MS_USER|MS_USERS));
+	if (mfd < 0)
+		return fsctx_mount_error(fsfd, "fsmount");
+
+	if (move_mount(mfd, "", AT_FDCWD, mi->node, MOVE_MOUNT_F_EMPTY_PATH) < 0)
+		return fsctx_mount_error(fsfd, "move_mount");
+
+	close(mfd);
+	return 1;
+}
+
 static int nfs_do_mount_v3v2(struct nfsmount_info *mi,
 			     struct sockaddr *sap, socklen_t salen,
 			     int checkv4)
@@ -702,7 +769,7 @@ static int nfs_do_mount_v3v2(struct nfsmount_info *mi,
 	if (!nfs_rewrite_pmap_mount_options(options, checkv4))
 		goto out_fail;
 
-	result = nfs_sys_mount(mi, options);
+	result = nfs_fscontext_mount(mi, options);
 
 out_fail:
 	po_destroy(options);
@@ -829,7 +896,7 @@ static int nfs_do_mount_v4(struct nfsmount_info *mi,
 		printf(_("%s: trying text-based options '%s'\n"),
 			progname, extra_opts);
 
-	result = nfs_sys_mount(mi, options);
+	result = nfs_fscontext_mount(mi, options);
 
 	/*
 	 * If success, update option string to be recorded in /etc/mtab.

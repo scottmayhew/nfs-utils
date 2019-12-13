@@ -16,7 +16,7 @@ mount_common = error.c network.c token.c \
 		    parse_opt.h parse_dev.h \
 		    nfs4_mount.h stropts.h version.h \
 		    mount_config.h utils.c utils.h \
-		    nfs_mount.h
+		    nfs_mount.h fscontext.h
 
 if MOUNT_CONFIG
 mount_common += configfile.c
