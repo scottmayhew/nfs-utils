@@ -26,6 +26,11 @@
 static struct event_base *evbase;
 static struct reexpdb_backend_plugin *dbbackend = &sqlite_plug_ops;
 
+/* assert_safe() always evalutes it argument, as it might have
+ * a side-effect.  assert() won't if compiled with NDEBUG
+ */
+#define assert_safe(__sideeffect) (__sideeffect ? 0 : ({assert(0) ; 0;}))
+
 static void client_cb(evutil_socket_t cl, short ev, void *d)
 {
 	struct event *me = d;
@@ -56,12 +61,11 @@ static void client_cb(evutil_socket_t cl, short ev, void *d)
 
 		if (dbbackend->fsidnum_by_path(req_path, &fsidnum, false, &found)) {
 			if (found)
-				assert(asprintf(&answer, "+ %u", fsidnum) != -1);
+				assert_safe(asprintf(&answer, "+ %u", fsidnum) != -1);
 			else
-				assert(asprintf(&answer, "+ ") != -1);
-		
+				assert_safe(asprintf(&answer, "+ ") != -1);
 		} else {
-			assert(asprintf(&answer, "- %s", "Command failed") != -1);
+			assert_safe(asprintf(&answer, "- %s", "Command failed") != -1);
 		}
 
 		(void)send(cl, answer, strlen(answer), 0);
@@ -78,13 +82,13 @@ static void client_cb(evutil_socket_t cl, short ev, void *d)
 
 		if (dbbackend->fsidnum_by_path(req_path, &fsidnum, true, &found)) {
 			if (found) {
-				assert(asprintf(&answer, "+ %u", fsidnum) != -1);
+				assert_safe(asprintf(&answer, "+ %u", fsidnum) != -1);
 			} else {
-				assert(asprintf(&answer, "+ ") != -1);
+				assert_safe(asprintf(&answer, "+ ") != -1);
 			}
 		
 		} else {
-			assert(asprintf(&answer, "- %s", "Command failed") != -1);
+			assert_safe(asprintf(&answer, "- %s", "Command failed") != -1);
 		}
 
 		(void)send(cl, answer, strlen(answer), 0);
@@ -106,15 +110,15 @@ static void client_cb(evutil_socket_t cl, short ev, void *d)
 		}
 
 		if (bad_input) {
-			assert(asprintf(&answer, "- %s", "Command failed: Bad input") != -1);
+			assert_safe(asprintf(&answer, "- %s", "Command failed: Bad input") != -1);
 		} else {
 			if (dbbackend->path_by_fsidnum(fsidnum, &path, &found)) {
 				if (found)
-					assert(asprintf(&answer, "+ %s", path) != -1);
+					assert_safe(asprintf(&answer, "+ %s", path) != -1);
 				else
-					assert(asprintf(&answer, "+ ") != -1);
+					assert_safe(asprintf(&answer, "+ ") != -1);
 			} else {
-				assert(asprintf(&answer, "+ ") != -1);
+				assert_safe(asprintf(&answer, "+ ") != -1);
 			}
 		}
 
@@ -129,7 +133,7 @@ static void client_cb(evutil_socket_t cl, short ev, void *d)
 	} else {
 		char *answer = NULL;
 
-		assert(asprintf(&answer, "- bad command") != -1);
+		assert_safe(asprintf(&answer, "- bad command") != -1);
 		(void)send(cl, answer, strlen(answer), 0);
 
 		free(answer);
