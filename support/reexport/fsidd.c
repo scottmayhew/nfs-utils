@@ -18,10 +18,9 @@
 
 #include "conffile.h"
 #include "reexport_backend.h"
+#include "reexport.h"
 #include "xcommon.h"
 #include "xlog.h"
-
-#define FSID_SOCKET_NAME "fsid.sock"
 
 static struct event_base *evbase;
 static struct reexpdb_backend_plugin *dbbackend = &sqlite_plug_ops;
@@ -167,11 +166,14 @@ int main(void)
 
 	sock_file = conf_get_str_with_def("reexport", "fsidd_socket", FSID_SOCKET_NAME);
 
-	unlink(sock_file);
-
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
 	strncpy(addr.sun_path, sock_file, sizeof(addr.sun_path) - 1);
+	if (addr.sun_path[0] == '@')
+		/* "abstract" socket namespace */
+		addr.sun_path[0] = 0;
+	else
+		unlink(sock_file);
 
 	srv = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
 	if (srv == -1) {

@@ -38,6 +38,9 @@ static bool connect_fsid_service(void)
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
 	strncpy(addr.sun_path, sock_file, sizeof(addr.sun_path) - 1);
+	if (addr.sun_path[0] == '@')
+		/* "abstract" socket namespace */
+		addr.sun_path[0] = 0;
 
 	s = socket(AF_UNIX, SOCK_SEQPACKET, 0);
 	if (s == -1) {
