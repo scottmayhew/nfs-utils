@@ -338,42 +338,34 @@ CPPFLAGS="${nfsutils_save_CPPFLAGS}"
 AC_CHECK_HEADER(uuid/uuid.h, ,
 	AC_MSG_ERROR([Cannot find needed header file uuid/uuid.h. Install libuuid-devel]))
 
+dnl check for libevent libraries and headers
+AC_LIBEVENT
+
+dnl Check for sqlite3
+AC_SQLITE3_VERS
+
+case $libsqlite3_cv_is_recent in
+yes) ;;
+unknown)
+   dnl do not fail when cross-compiling
+   AC_MSG_WARN([assuming sqlite is at least v3.3]) ;;
+*)
+   AC_MSG_ERROR([nfsdcld requires sqlite-devel]) ;;
+esac
+
 if test "$enable_nfsv4" = yes; then
-  dnl check for libevent libraries and headers
-  AC_LIBEVENT
 
   dnl check for the keyutils libraries and headers
   AC_KEYUTILS
 
-  dnl Check for sqlite3
-  AC_SQLITE3_VERS
-
   if test "$enable_nfsdcld" = "yes"; then
 	AC_CHECK_HEADERS([libgen.h sys/inotify.h], ,
 		AC_MSG_ERROR([Cannot find header needed for nfsdcld]))
-
-    case $libsqlite3_cv_is_recent in
-    yes) ;;
-    unknown)
-      dnl do not fail when cross-compiling
-      AC_MSG_WARN([assuming sqlite is at least v3.3]) ;;
-    *)
-      AC_MSG_ERROR([nfsdcld requires sqlite-devel]) ;;
-    esac
   fi
 
   if test "$enable_nfsdcltrack" = "yes"; then
 	AC_CHECK_HEADERS([libgen.h sys/inotify.h], ,
 		AC_MSG_ERROR([Cannot find header needed for nfsdcltrack]))
-
-    case $libsqlite3_cv_is_recent in
-    yes) ;;
-    unknown)
-      dnl do not fail when cross-compiling
-      AC_MSG_WARN([assuming sqlite is at least v3.3]) ;;
-    *)
-      AC_MSG_ERROR([nfsdcltrack requires sqlite-devel]) ;;
-    esac
   fi
 
 else
