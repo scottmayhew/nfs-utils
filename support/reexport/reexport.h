@@ -1,6 +1,8 @@
 #ifndef REEXPORT_H
 #define REEXPORT_H
 
+#include "nfslib.h"
+
 enum {
 	REEXP_NONE = 0,
 	REEXP_AUTO_FSIDNUM,
