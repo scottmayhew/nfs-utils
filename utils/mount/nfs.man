@@ -94,31 +94,38 @@ This option is an alternative to the
 option.
 It is included for compatibility with other operating systems
 .TP 1.5i
-.BR soft " / " hard
+.BR soft " / " softerr " / " hard
 Determines the recovery behavior of the NFS client
 after an NFS request times out.
-If neither option is specified (or if the
+If no option is specified (or if the
 .B hard
 option is specified), NFS requests are retried indefinitely.
-If the
-.B soft
+If either the
+.BR soft " or " softerr
 option is specified, then the NFS client fails an NFS request
 after
 .B retrans
 retransmissions have been sent,
-causing the NFS client to return an error
-to the calling application.
+causing the NFS client to return either the error
+.B EIO
+(for the
+.B soft
+option) or
+.B ETIMEDOUT
+(for the
+.B softerr
+option) to the calling application.
 .IP
 .I NB:
 A so-called "soft" timeout can cause
 silent data corruption in certain cases. As such, use the
-.B soft
+.BR soft " or " softerr
 option only when client responsiveness
 is more important than data integrity.
 Using NFS over TCP or increasing the value of the
 .B retrans
 option may mitigate some of the risks of using the
-.B soft
+.BR soft " or " softerr
 option.
 .TP 1.5i
 .BR softreval " / " nosoftreval
