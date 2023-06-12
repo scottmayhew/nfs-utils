@@ -2,7 +2,9 @@
 #include <config.h>
 #endif
 
+#ifdef HAVE_DLFCN_H
 #include <dlfcn.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/random.h>

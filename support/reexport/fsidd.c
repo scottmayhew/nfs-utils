@@ -3,7 +3,9 @@
 #endif
 
 #include <assert.h>
+#ifdef HAVE_DLFCN_H
 #include <dlfcn.h>
+#endif
 #include <event2/event.h>
 #include <limits.h>
 #include <stdint.h>
