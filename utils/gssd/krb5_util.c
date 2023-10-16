@@ -165,7 +165,7 @@ static int select_krb5_ccache(const struct dirent *d);
 static int gssd_find_existing_krb5_ccache(uid_t uid, char *dirname,
 		const char **cctype, struct dirent **d);
 static int gssd_get_single_krb5_cred(krb5_context context,
-		krb5_keytab kt, struct gssd_k5_kt_princ *ple);
+		krb5_keytab kt, struct gssd_k5_kt_princ *ple, int force_renew);
 static int query_krb5_ccache(const char* cred_cache, char **ret_princname,
 		char **ret_realm);
 
@@ -391,7 +391,8 @@ gssd_check_if_cc_exists(struct gssd_k5_kt_princ *ple)
 static int
 gssd_get_single_krb5_cred(krb5_context context,
 			  krb5_keytab kt,
-			  struct gssd_k5_kt_princ *ple)
+			  struct gssd_k5_kt_princ *ple,
+			  int force_renew)
 {
 #ifdef HAVE_KRB5_GET_INIT_CREDS_OPT_SET_ADDRESSLESS
 	krb5_get_init_creds_opt *init_opts = NULL;
@@ -421,7 +422,7 @@ gssd_get_single_krb5_cred(krb5_context context,
 	 */
 	now += 300;
 	pthread_mutex_lock(&ple_lock);
-	if (ple->ccname && ple->endtime > now && !nocache) {
+	if (ple->ccname && ple->endtime > now && !nocache && !force_renew) {
 		printerr(3, "%s(0x%lx): Credentials in CC '%s' are good until %s",
 			 __func__, tid, ple->ccname, ctime((time_t *)&ple->endtime));
 		code = 0;
@@ -1155,7 +1156,8 @@ err_cache:
 static int
 gssd_refresh_krb5_machine_credential_internal(char *hostname,
 				     struct gssd_k5_kt_princ *ple,
-				     char *service, char *srchost)
+				     char *service, char *srchost,
+				     int force_renew)
 {
 	krb5_error_code code = 0;
 	krb5_context context;
@@ -1221,7 +1223,7 @@ gssd_refresh_krb5_machine_credential_internal(char *hostname,
 			goto out_free_kt;
 		}
 	}
-	retval = gssd_get_single_krb5_cred(context, kt, ple);
+	retval = gssd_get_single_krb5_cred(context, kt, ple, force_renew);
 out_free_kt:
 	krb5_kt_close(context, kt);
 out_free_context:
@@ -1344,7 +1346,7 @@ gssd_get_krb5_machine_cred_list(char ***list)
 		pthread_mutex_unlock(&ple_lock);
 		/* Make sure cred is up-to-date before returning it */
 		retval = gssd_refresh_krb5_machine_credential_internal(NULL, ple,
-								       NULL, NULL);
+								       NULL, NULL, 0);
 		pthread_mutex_lock(&ple_lock);
 		if (gssd_k5_kt_princ_list == NULL) {
 			/* Looks like we did shutdown... abort */
@@ -1456,10 +1458,12 @@ gssd_destroy_krb5_principals(int destroy_machine_creds)
  */
 int
 gssd_refresh_krb5_machine_credential(char *hostname,
-				     char *service, char *srchost)
+				     char *service, char *srchost,
+				     int force_renew)
 {
     return gssd_refresh_krb5_machine_credential_internal(hostname, NULL,
-							 service, srchost);
+							 service, srchost,
+							 force_renew);
 }
 
 /*
