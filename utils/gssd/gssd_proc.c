@@ -419,6 +419,8 @@ create_auth_rpc_client(struct clnt_info *clp,
 			if (cred == GSS_C_NO_CREDENTIAL)
 				retval = gssd_refresh_krb5_machine_credential(clp->servername,
 					"*", NULL, 1);
+			else
+				retval = gssd_k5_remove_bad_service_cred(clp->servername);
 			if (!retval) {
 				auth = authgss_create_default(rpc_clnt, tgtname,
 						&sec);
