@@ -1,10 +1,9 @@
-
 /*
  * Handle communication with knfsd internal cache
  *
  * We open /proc/net/rpc/{auth.unix.ip,nfsd.export,nfsd.fh}/channel
  * and listen for requests (using my_svc_run)
- * 
+ *
  */
 
 #ifdef HAVE_CONFIG_H
@@ -16,6 +15,7 @@
 #include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -1774,4 +1774,75 @@ cache_get_filehandle(nfs_export *exp, int len, char *p)
 	memset(fh.fh_handle, 0, sizeof(fh.fh_handle));
 	fh.fh_size = qword_get(&bp, (char *)fh.fh_handle, NFS3_FHSIZE);
 	return &fh;
+}
+
+/* Wait for all worker child processes to exit and reap them */
+void
+cache_wait_for_workers(char *prog)
+{
+	int status;
+	pid_t pid;
+
+	for (;;) {
+
+		pid = waitpid(0, &status, 0);
+
+		if (pid < 0) {
+			if (errno == ECHILD)
+				return; /* no more children */
+			xlog(L_FATAL, "%s: can't wait: %s\n", prog,
+					strerror(errno));
+		}
+
+		/* Note: because we SIG_IGN'd SIGCHLD earlier, this
+		 * does not happen on 2.6 kernels, and waitpid() blocks
+		 * until all the children are dead then returns with
+		 * -ECHILD.  But, we don't need to do anything on the
+		 * death of individual workers, so we don't care. */
+		xlog(L_NOTICE, "%s: reaped child %d, status %d\n",
+		     prog, (int)pid, status);
+	}
+}
+
+/* Fork num_threads worker children and wait for them */
+int
+cache_fork_workers(char *prog, int num_threads)
+{
+	int i;
+	pid_t pid;
+
+	if (num_threads <= 1)
+		return 1;
+
+	xlog(L_NOTICE, "%s: starting %d threads\n", prog, num_threads);
+
+	for (i = 0 ; i < num_threads ; i++) {
+		pid = fork();
+		if (pid < 0) {
+			xlog(L_FATAL, "%s: cannot fork: %s\n", prog,
+					strerror(errno));
+		}
+		if (pid == 0) {
+			/* worker child */
+
+			/* Re-enable the default action on SIGTERM et al
+			 * so that workers die naturally when sent them.
+			 * Only the parent unregisters with pmap and
+			 * hence needs to do special SIGTERM handling. */
+			struct sigaction sa;
+			sa.sa_handler = SIG_DFL;
+			sa.sa_flags = 0;
+			sigemptyset(&sa.sa_mask);
+			sigaction(SIGHUP, &sa, NULL);
+			sigaction(SIGINT, &sa, NULL);
+			sigaction(SIGTERM, &sa, NULL);
+
+			/* fall into my_svc_run in caller */
+			return 1;
+		}
+	}
+
+	/* in parent */
+	cache_wait_for_workers(prog);
+	return 0;
 }
