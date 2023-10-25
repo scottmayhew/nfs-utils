@@ -77,6 +77,7 @@ static bool path_lookup_error(int err)
 	case ENAMETOOLONG:
 	case ENOENT:
 	case ENOTDIR:
+	case EACCES:
 		return 1;
 	}
 	return 0;
