@@ -236,9 +236,10 @@ main(int argc, char **argv)
 	v4clients_init();
 
 	/* Process incoming upcalls */
-	cache_process_loop();
+	while (cache_process(NULL) >= 0)
+		;
 
-	xlog(L_ERROR, "%s: process loop terminated unexpectedly. Exiting...\n",
+	xlog(L_ERROR, "%s: process loop terminated unexpectedly(%m). Exiting...\n",
 		progname);
 
 	free_state_path_names(&etab);

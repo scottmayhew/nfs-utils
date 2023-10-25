@@ -1602,39 +1602,40 @@ int cache_process_req(fd_set *readfds)
 }
 
 /**
- * cache_process_loop - process incoming upcalls
+ * cache_process - process incoming upcalls
+ * Returns -ve on error, or number of fds in svc_fds
+ * that might need processing.
  */
-void cache_process_loop(void)
+int cache_process(fd_set *readfds)
 {
-	fd_set	readfds;
+	fd_set fdset;
 	int	selret;
 
-	FD_ZERO(&readfds);
-
-	for (;;) {
-
-		cache_set_fds(&readfds);
-		v4clients_set_fds(&readfds);
-
-		selret = select(FD_SETSIZE, &readfds,
-				(void *) 0, (void *) 0, (struct timeval *) 0);
-
-
-		switch (selret) {
-		case -1:
-			if (errno == EINTR || errno == ECONNREFUSED
-			 || errno == ENETUNREACH || errno == EHOSTUNREACH)
-				continue;
-			xlog(L_ERROR, "my_svc_run() - select: %m");
-			return;
-
-		default:
-			cache_process_req(&readfds);
-			v4clients_process(&readfds);
-		}
+	if (!readfds) {
+		FD_ZERO(&fdset);
+		readfds = &fdset;
 	}
-}
+	cache_set_fds(readfds);
+	v4clients_set_fds(readfds);
 
+	selret = select(FD_SETSIZE, readfds,
+			(void *) 0, (void *) 0, (struct timeval *) 0);
+
+	switch (selret) {
+	case -1:
+		if (errno == EINTR || errno == ECONNREFUSED
+		    || errno == ENETUNREACH || errno == EHOSTUNREACH)
+			return 0;
+		return -1;
+
+	default:
+		selret -= cache_process_req(readfds);
+		selret -= v4clients_process(readfds);
+		if (selret < 0)
+			selret = 0;
+	}
+	return selret;
+}
 
 /*
  * Give IP->domain and domain+path->options to kernel
