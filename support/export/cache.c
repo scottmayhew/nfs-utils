@@ -759,7 +759,15 @@ static struct addrinfo *lookup_client_addr(char *dom)
 	return ret;
 }
 
-static void nfsd_fh(int f)
+#define RETRY_SEC 120
+struct delayed {
+	char *message;
+	time_t last_attempt;
+	int f;
+	struct delayed *next;
+} *delayed;
+
+static int nfsd_handle_fh(int f, char *bp, int blen)
 {
 	/* request are:
 	 *  domain fsidtype fsid
@@ -777,21 +785,13 @@ static void nfsd_fh(int f)
 	nfs_export *exp;
 	int i;
 	int dev_missing = 0;
-	char buf[RPC_CHAN_BUF_SIZE], *bp;
-	int blen;
+	char buf[RPC_CHAN_BUF_SIZE];
 	int did_uncover = 0;
-
-	blen = cache_read(f, buf, sizeof(buf));
-	if (blen <= 0 || buf[blen-1] != '\n') return;
-	buf[blen-1] = 0;
-
-	xlog(D_CALL, "nfsd_fh: inbuf '%s'", buf);
-
-	bp = buf;
+	int ret = 0;
 
 	dom = malloc(blen);
 	if (dom == NULL)
-		return;
+		return ret;
 	if (qword_get(&bp, dom, blen) <= 0)
 		goto out;
 	if (qword_get_int(&bp, &fsidtype) != 0)
@@ -893,8 +893,10 @@ static void nfsd_fh(int f)
 		/* The missing dev could be what we want, so just be
 		 * quiet rather than returning stale yet
 		 */
-		if (dev_missing)
+		if (dev_missing) {
+			ret = 1;
 			goto out;
+		}
 	} else if (found->e_mountpoint &&
 	    !is_mountpoint(found->e_mountpoint[0]?
 			   found->e_mountpoint:
@@ -904,7 +906,7 @@ static void nfsd_fh(int f)
 		   xlog(L_WARNING, "%s not exported as %d not a mountpoint",
 		   found->e_path, found->e_mountpoint);
 		 */
-		/* FIXME we need to make sure we re-visit this later */
+		ret = 1;
 		goto out;
 	}
 
@@ -933,7 +935,68 @@ out:
 		free(found_path);
 	nfs_freeaddrinfo(ai);
 	free(dom);
-	xlog(D_CALL, "nfsd_fh: found %p path %s", found, found ? found->e_path : NULL);
+	if (!ret)
+		xlog(D_CALL, "nfsd_fh: found %p path %s",
+		     found, found ? found->e_path : NULL);
+	return ret;
+}
+
+static void nfsd_fh(int f)
+{
+	struct delayed *d, **dp;
+	char inbuf[RPC_CHAN_BUF_SIZE];
+	int blen;
+
+	blen = cache_read(f, inbuf, sizeof(inbuf));
+	if (blen <= 0 || inbuf[blen-1] != '\n') return;
+	inbuf[blen-1] = 0;
+
+	xlog(D_CALL, "nfsd_fh: inbuf '%s'", inbuf);
+
+	if (nfsd_handle_fh(f, inbuf, blen) == 0)
+		return;
+	/* We don't have a definitive answer to give the kernel.
+	 * This is because an export marked "mountpoint" isn't a
+	 * mountpoint, or because a stat of a mountpoint fails with
+	 * a strange error like ETIMEDOUT as is possible with an
+	 * NFS mount marked "softerr" which is being re-exported.
+	 *
+	 * We cannot tell the kernel to retry, so we have to
+	 * retry ourselves.
+	 */
+	d = malloc(sizeof(*d));
+
+	if (!d)
+		return;
+	d->message = strndup(inbuf, blen);
+	if (!d->message) {
+		free(d);
+		return;
+	}
+	d->f = f;
+	d->last_attempt = time(NULL);
+	d->next = NULL;
+	dp = &delayed;
+	while (*dp)
+		dp = &(*dp)->next;
+	*dp = d;
+}
+
+static void nfsd_retry_fh(struct delayed *d)
+{
+	struct delayed **dp;
+
+	if (nfsd_handle_fh(d->f, d->message, strlen(d->message)+1) == 0) {
+		free(d->message);
+		free(d);
+		return;
+	}
+	d->last_attempt = time(NULL);
+	d->next = NULL;
+	dp = &delayed;
+	while (*dp)
+		dp = &(*dp)->next;
+	*dp = d;
 }
 
 #ifdef HAVE_JUNCTION_SUPPORT
@@ -1512,7 +1575,7 @@ static void nfsd_export(int f)
 			 * This will cause it not to appear in the V4 Pseudo-root
 			 * and so a "mount" of this path will fail, just like with
 			 * V3.
-			 * And filehandle for this mountpoint from an earlier
+			 * Any filehandle for this mountpoint from an earlier
 			 * mount will block in nfsd.fh lookup.
 			 */
 			xlog(L_WARNING,
@@ -1610,6 +1673,7 @@ int cache_process(fd_set *readfds)
 {
 	fd_set fdset;
 	int	selret;
+	struct timeval tv = { 24*3600, 0 };
 
 	if (!readfds) {
 		FD_ZERO(&fdset);
@@ -1618,8 +1682,29 @@ int cache_process(fd_set *readfds)
 	cache_set_fds(readfds);
 	v4clients_set_fds(readfds);
 
-	selret = select(FD_SETSIZE, readfds,
-			(void *) 0, (void *) 0, (struct timeval *) 0);
+	if (delayed) {
+		time_t now = time(NULL);
+		time_t delay;
+		if (delayed->last_attempt > now)
+			/* Clock updated - retry immediately */
+			delayed->last_attempt = now - RETRY_SEC;
+		delay = delayed->last_attempt + RETRY_SEC - now;
+		if (delay < 0)
+			delay = 0;
+		tv.tv_sec = delay;
+	}
+	selret = select(FD_SETSIZE, readfds, NULL, NULL, &tv);
+
+	if (delayed) {
+		time_t now = time(NULL);
+		struct delayed *d = delayed;
+
+		if (d->last_attempt + RETRY_SEC <= now) {
+			delayed = d->next;
+			d->next = NULL;
+			nfsd_retry_fh(d);
+		}
+	}
 
 	switch (selret) {
 	case -1:
