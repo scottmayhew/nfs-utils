@@ -289,12 +289,16 @@ main(int argc, char **argv)
 	else if (num_threads > MAX_THREADS)
 		num_threads = MAX_THREADS;
 
+	/* Open cache channel files BEFORE forking so each upcall is
+	 * only handled by one thread.  Kernel provides locking for both
+	 * read and write.
+	 */
+	cache_open();
+
 	if (num_threads > 1)
 		fork_workers();
 
 
-	/* Open files now to avoid sharing descriptors among forked processes */
-	cache_open();
 	v4clients_init();
 
 	/* Process incoming upcalls */
