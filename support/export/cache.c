@@ -858,7 +858,8 @@ static void nfsd_fh(int f)
 			case 0:
 				continue;
 			case -1:
-				goto out;
+				dev_missing ++;
+				continue;
 			}
 			if (is_ipaddr_client(dom)
 					&& !ipaddr_client_matches(exp, ai))
