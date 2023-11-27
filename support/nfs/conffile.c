@@ -763,19 +763,24 @@ conf_init_file(const char *conf_file)
 	if (conf_file == NULL)
 		conf_file = NFS_CONFFILE;
 
-	/*
-	 * First parse the give config file
-	 * then parse the config.conf.d directory
-	 * (if it exists)
+	/* If the config file is in /etc (normal) then check
+	 * /usr/etc first.  Also check config.conf.d for files
+	 * names *.conf.
+	 *
+	 * Content or later files always over-rides earlier
+	 * files.
 	 */
-	conf_load_file(conf_file);
+	if (strncmp(conf_file, "/etc/", 5) == 0) {
+		char *usrconf = NULL;
 
-	/*
-	 * When the same variable is set in both files
-	 * the conf.d file will override the config file.
-	 * This allows automated admin systems to
-	 * have the final say.
-	 */
+		asprintf(&usrconf, "/usr%s", conf_file);
+		if (usrconf) {
+			conf_load_file(usrconf);
+			conf_init_dir(usrconf);
+			free(usrconf);
+		}
+	}
+	conf_load_file(conf_file);
 	conf_init_dir(conf_file);
 }
 
