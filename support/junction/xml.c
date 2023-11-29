@@ -387,7 +387,6 @@ junction_xml_write(const char *pathname, const char *name, xmlDocPtr doc)
 		return retval;
 
 	retval = FEDFS_ERR_SVRFAULT;
-	xmlIndentTreeOutput = 1;
 	xmlDocDumpFormatMemoryEnc(doc, &buf, &len, "UTF-8", 1);
 	if (len < 0)
 		goto out;
