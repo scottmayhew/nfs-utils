@@ -290,7 +290,7 @@ junction_parse_xml_buf(const char *pathname, const char *name,
 {
 	xmlDocPtr tmp;
 
-	tmp = xmlParseMemory(buf, (int)len);
+	tmp = xmlReadMemory(buf, (int)len, NULL, NULL, 0);
 	if (tmp == NULL) {
 		xlog(D_GENERAL, "Failed to parse XML in %s(%s)\n",
 			pathname, name);
