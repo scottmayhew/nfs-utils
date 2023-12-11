@@ -1553,48 +1553,6 @@ gssd_acquire_user_cred(gss_cred_id_t *gss_cred)
 	return ret;
 }
 
-/* Removed a service ticket for nfs/<name> from the ticket cache
- */
-int
-gssd_k5_remove_bad_service_cred(char *name)
-{
-        krb5_creds in_creds, out_creds;
-        krb5_error_code ret;
-        krb5_context context;
-        krb5_ccache cache;
-        krb5_principal principal;
-        int retflags = KRB5_TC_MATCH_SRV_NAMEONLY;
-        char srvname[1024];
-
-        ret = krb5_init_context(&context);
-        if (ret)
-                goto out_cred;
-        ret = krb5_cc_default(context, &cache);
-        if (ret)
-                goto out_free_context;
-        ret = krb5_cc_get_principal(context, cache, &principal);
-        if (ret)
-                goto out_close_cache;
-        memset(&in_creds, 0, sizeof(in_creds));
-        in_creds.client = principal;
-        sprintf(srvname, "nfs/%s", name);
-        ret = krb5_parse_name(context, srvname, &in_creds.server);
-        if (ret)
-                goto out_free_principal;
-        ret = krb5_cc_retrieve_cred(context, cache, retflags, &in_creds, &out_creds);
-        if (ret)
-                goto out_free_principal;
-        ret = krb5_cc_remove_cred(context, cache, 0, &out_creds);
-out_free_principal:
-        krb5_free_principal(context, principal);
-out_close_cache:
-        krb5_cc_close(context, cache);
-out_free_context:
-        krb5_free_context(context);
-out_cred:
-        return ret;
-}
-
 #ifdef HAVE_SET_ALLOWABLE_ENCTYPES
 /*
  * this routine obtains a credentials handle via gss_acquire_cred()
