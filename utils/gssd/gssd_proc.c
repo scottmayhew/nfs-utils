@@ -427,13 +427,32 @@ create_auth_rpc_client(struct clnt_info *clp,
 	auth = authgss_create_default(rpc_clnt, tgtname, &sec);
 #endif
 	if (!auth) {
+#ifdef HAVE_TIRPC_GSS_SECCREATE
+		if (ret.minor_status == KRB5KRB_AP_ERR_BAD_INTEGRITY) {
+			printerr(2, "WARNING: server=%s failed context "
+				 "creation with KRB5_AP_ERR_BAD_INTEGRITY\n",
+				 clp->servername);
+			if (cred == GSS_C_NO_CREDENTIAL)
+				retval = gssd_refresh_krb5_machine_credential(clp->servername,
+					"*", NULL, 1);
+			if (!retval) {
+				auth = rpc_gss_seccreate(rpc_clnt, tgtname,
+						mechanism, rpcsec_gss_svc_none,
+						NULL, &req, &ret);
+				if (auth)
+					goto success;
+			}
+		}
+#endif
 		/* Our caller should print appropriate message */
 		printerr(2, "WARNING: Failed to create krb5 context for "
 			    "user with uid %d for server %s\n",
 			 uid, tgtname);
 		goto out_fail;
 	}
-
+#ifdef HAVE_TIRPC_GSS_SECCREATE
+success:
+#endif
 	/* Success !!! */
 	rpc_clnt->cl_auth = auth;
 	*clnt_return = rpc_clnt;
