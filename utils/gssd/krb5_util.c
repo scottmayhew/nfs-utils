@@ -1675,7 +1675,7 @@ out:
  */
 
 int
-limit_krb5_enctypes(struct rpc_gss_sec *sec)
+limit_krb5_enctypes(struct rpc_gss_sec *sec, bool backoff)
 {
 	u_int maj_stat, min_stat;
 	krb5_enctype enctypes[] = { ENCTYPE_DES_CBC_CRC,
@@ -1689,6 +1689,17 @@ limit_krb5_enctypes(struct rpc_gss_sec *sec)
 	int num_set_enctypes;
 	krb5_enctype *set_enctypes;
 	int err = -1;
+	int i, j;
+	bool done = false;
+
+	if (backoff && sec->cred != GSS_C_NO_CREDENTIAL) {
+		printerr(2, "%s: backoff: releasing old cred\n", __func__);
+		maj_stat = gss_release_cred(&min_stat, &sec->cred);
+		if (maj_stat != GSS_S_COMPLETE) {
+			printerr(2, "%s: gss_release_cred() failed\n", __func__);
+			return -1;
+		}
+	}
 
 	if (sec->cred == GSS_C_NO_CREDENTIAL) {
 		err = gssd_acquire_krb5_cred(&sec->cred);
@@ -1716,6 +1727,33 @@ limit_krb5_enctypes(struct rpc_gss_sec *sec)
 		printerr(2, "%s: using enctypes from the kernel\n", __func__);
 		num_set_enctypes = num_krb5_enctypes;
 		set_enctypes = krb5_enctypes;
+	}
+
+	if (backoff) {
+		j = num_set_enctypes;
+		for (i = 0; i < j && !done; i++) {
+			switch (*set_enctypes) {
+			case ENCTYPE_AES128_CTS_HMAC_SHA256_128:
+			case ENCTYPE_AES256_CTS_HMAC_SHA384_192:
+			case ENCTYPE_CAMELLIA128_CTS_CMAC:
+			case ENCTYPE_CAMELLIA256_CTS_CMAC:
+				printerr(2, "%s: backoff: removing enctype %d\n",
+					 __func__, *set_enctypes);
+				set_enctypes++;
+				num_set_enctypes--;
+				break;
+			default:
+				done = true;
+				break;
+			}
+		}
+		printerr(2, "%s: backoff: %d remaining enctypes\n",
+			 __func__, num_set_enctypes);
+		if (!num_set_enctypes) {
+			printerr(0, "%s: no remaining enctypes after backoff\n",
+				 __func__);
+			return -1;
+		}
 	}
 
 	maj_stat = gss_set_allowable_enctypes(&min_stat, sec->cred,

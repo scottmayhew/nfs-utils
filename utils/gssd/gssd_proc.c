@@ -338,6 +338,10 @@ create_auth_rpc_client(struct clnt_info *clp,
 	rpc_gss_options_ret_t	ret;
 	char			mechanism[] = "kerberos_v5";
 #endif
+#ifdef HAVE_SET_ALLOWABLE_ENCTYPES
+	bool			backoff = false;
+	struct rpc_err		err;
+#endif
 	pthread_t tid = pthread_self();
 
 	sec.qop = GSS_C_QOP_DEFAULT;
@@ -354,14 +358,14 @@ create_auth_rpc_client(struct clnt_info *clp,
 		goto out_fail;
 	}
 
-
 	if (authtype == AUTHTYPE_KRB5) {
 #ifdef HAVE_SET_ALLOWABLE_ENCTYPES
+again:
 		/*
 		 * Do this before creating rpc connection since we won't need
 		 * rpc connection if it fails!
 		 */
-		if (limit_krb5_enctypes(&sec)) {
+		if (limit_krb5_enctypes(&sec, backoff)) {
 			printerr(1, "WARNING: Failed while limiting krb5 "
 				    "encryption types for user with uid %d\n",
 				 uid);
@@ -444,6 +448,13 @@ create_auth_rpc_client(struct clnt_info *clp,
 				if (auth)
 					goto success;
 			}
+		}
+#endif
+#ifdef HAVE_SET_ALLOWABLE_ENCTYPES
+		clnt_geterr(rpc_clnt, &err);
+		if (err.re_errno == ECONNRESET && !backoff) {
+			backoff = true;
+			goto again;
 		}
 #endif
 		/* Our caller should print appropriate message */
